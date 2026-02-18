@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@400;600;700&display=swap');
+
+:root {
+  --netflix-red: #e50914;
+  --netflix-black: #141414;
+  --netflix-dark: #181818;
+}
+
+body {
+  background-color: var(--netflix-black);
+  color: #fff;
+  font-family: 'Source Sans 3', sans-serif;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

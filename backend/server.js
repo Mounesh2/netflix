@@ -19,6 +19,20 @@ const createUsersTable = `CREATE TABLE IF NOT EXISTS users (
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
+let dbInitialized = false;
+
+app.use(async (req, res, next) => {
+  if (!dbInitialized) {
+    try {
+      await pool.execute(createUsersTable);
+      dbInitialized = true;
+    } catch (err) {
+      console.error('Database init error:', err);
+    }
+  }
+  next();
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/movies', movieRoutes);
 
@@ -26,13 +40,6 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'API is running' });
 });
 
-(async () => {
-  try {
-    await pool.execute(createUsersTable);
-  } catch (err) {
-    console.error('Database init error:', err);
-  }
-  app.set('omdbApiKey', process.env.OMDB_API_KEY || null);
-})();
+app.set('omdbApiKey', process.env.OMDB_API_KEY || null);
 
 module.exports = app;

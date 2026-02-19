@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import api from '@/lib/api';
@@ -167,6 +167,16 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [heroImageError, setHeroImageError] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ Title: string; Poster: string; imdbID: string; Year: string }[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchDone, setSearchDone] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  // Default movies from OMDb API (loaded on page load)
+  const [apiMovies, setApiMovies] = useState<{ Title: string; Poster: string; imdbID: string; Year: string }[]>([]);
+  const [apiMoviesLoading, setApiMoviesLoading] = useState(true);
+  const [apiMoviesError, setApiMoviesError] = useState<string | null>(null);
+  const searchResultsRef = useRef<HTMLDivElement>(null);
   const heroVideoUrl = 'https://www.youtube.com/watch?v=aF08WVSvCok'; // Toxic movie trailer
   const heroImageUrl = 'https://img.youtube.com/vi/aF08WVSvCok/maxresdefault.jpg';
   
@@ -176,6 +186,37 @@ export default function HomePage() {
     releaseDate: 'March 19, 2026',
     genre: 'Thriller, Action',
     director: 'Geetu Mohandas',
+  };
+
+  const handleSearch = (overrideQuery?: string) => {
+    const q = (overrideQuery !== undefined ? overrideQuery : searchQuery).trim();
+    if (!q) return;
+    if (overrideQuery !== undefined) setSearchQuery(overrideQuery);
+    setSearchLoading(true);
+    setSearchDone(true);
+    setSearchError(null);
+    api
+      .get('/movies/search', { params: { s: q } })
+      .then((res) => {
+        const data = res.data;
+        const list = Array.isArray(data?.Search) ? data.Search : (data?.search ?? []);
+        setSearchResults(list);
+        setSearchError(null);
+        if (list.length === 0 && data?.Response === 'False') {
+          setSearchError(data?.Error || 'No results found.');
+        }
+        if (list.length > 0) {
+          searchResultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      })
+      .catch((err) => {
+        setSearchResults([]);
+        const d = err.response?.data;
+        const msg = d?.detail || d?.error || d?.Error || err.message || 'Search failed. Is the backend running on port 5000?';
+        setSearchError(msg);
+        searchResultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      })
+      .finally(() => setSearchLoading(false));
   };
 
   useEffect(() => {
@@ -198,6 +239,28 @@ export default function HomePage() {
       });
   }, [router]);
 
+  // Load default movies from OMDb API when user is ready
+  useEffect(() => {
+    if (!user) return;
+    setApiMoviesLoading(true);
+    setApiMoviesError(null);
+    api
+      .get('/movies/search', { params: { s: 'movie' } })
+      .then((res) => {
+        const list = res.data?.Search ?? [];
+        setApiMovies(Array.isArray(list) ? list : []);
+        if (list.length === 0 && res.data?.Response !== 'True') {
+          setApiMoviesError(res.data?.Error || 'Could not load movies.');
+        }
+      })
+      .catch((err) => {
+        setApiMovies([]);
+        const d = err.response?.data;
+        setApiMoviesError(d?.detail || d?.error || d?.Error || err.message || 'Backend or API error.');
+      })
+      .finally(() => setApiMoviesLoading(false));
+  }, [user]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#141414] flex items-center justify-center">
@@ -216,7 +279,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#141414]">
-      <Navbar user={user} />
+      <Navbar user={user} onSearch={(q) => handleSearch(q)} />
       <main className="pt-16">
         {/* Hero banner */}
         <section className="relative h-[70vh] min-h-[400px] flex items-end pb-24 px-8">
@@ -268,6 +331,58 @@ export default function HomePage() {
               </motion.button>
             </div>
           </motion.div>
+        </section>
+
+        {/* Movies from OMDb API (loaded by default) */}
+        <section className="px-8 -mt-16 mb-10">
+          <h2 className="text-xl font-bold mb-4">Movies from OMDb API</h2>
+          {apiMoviesError && (
+            <p className="text-amber-400 text-sm mb-2">{apiMoviesError}</p>
+          )}
+          {apiMoviesLoading ? (
+            <p className="text-white/70">Loading movies…</p>
+          ) : apiMovies.length > 0 ? (
+            <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide">
+              {apiMovies.map((m, i) => (
+                <MovieCard
+                  key={m.imdbID}
+                  title={`${m.Title} (${m.Year})`}
+                  imageUrl={m.Poster && m.Poster !== 'N/A' ? m.Poster : `https://via.placeholder.com/200x280/333/999?text=${encodeURIComponent(m.Title)}`}
+                  videoUrl={`https://www.imdb.com/title/${m.imdbID}`}
+                  index={i}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="text-white/70">No movies from API. Check backend and OMDb key.</p>
+          )}
+        </section>
+
+        {/* Search results (search from navbar) */}
+        <section ref={searchResultsRef} className="px-8 -mt-16 mb-10 scroll-mt-24">
+          {searchDone && (
+            <div className="flex flex-col gap-3">
+              <h2 className="text-xl font-bold">Search results</h2>
+              {searchError && (
+                <p className="text-amber-400 text-sm">{searchError}</p>
+              )}
+              <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide">
+              {searchResults.length === 0 && !searchError ? (
+                <p className="text-white/70">No results. Try another search.</p>
+              ) : searchResults.length === 0 ? null : (
+                searchResults.map((m, i) => (
+                  <MovieCard
+                    key={m.imdbID}
+                    title={`${m.Title} (${m.Year})`}
+                    imageUrl={m.Poster && m.Poster !== 'N/A' ? m.Poster : `https://via.placeholder.com/200x280/333/999?text=${encodeURIComponent(m.Title)}`}
+                    videoUrl={`https://www.imdb.com/title/${m.imdbID}`}
+                    index={i}
+                  />
+                ))
+              )}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Movie rows */}
